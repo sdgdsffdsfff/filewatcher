@@ -50,7 +50,7 @@ public class Overlord {
     private int parallelism = 4 ;
     private int checkpointFrequencyInSecond = 1 ;
     //重试1次后开始sleep 10s .
-    private Pauser pauser = new LightPauser(1,10 * 1000 * 1000);
+    private Pauser pauser = new LightPauser(1,TimeUnit.SECONDS.toNanos(10));
 
     private volatile boolean running = true;
     private ScheduledExecutorService checkpointingTimer;
