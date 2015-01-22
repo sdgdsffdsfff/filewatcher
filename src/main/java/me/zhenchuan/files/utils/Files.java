@@ -32,7 +32,7 @@ public class Files {
             fileChannel.write(byteBuffers);
             fileChannel.close();
         }catch (IOException e){
-            output.deleteOnExit();
+            output.delete();
         }
         return output;
     }
