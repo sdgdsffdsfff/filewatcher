@@ -1,4 +1,4 @@
-package me.zhenchuan.files.hdfs;
+package me.zhenchuan.files.utils;
 
 import org.joda.time.*;
 
@@ -58,7 +58,7 @@ public enum Granularity {
 
     public static void main(String[] args) {
         System.out.println(Granularity.valueOf("hOUR".toUpperCase()).next(new DateTime()));
-        System.out.println(Granularity.valueOf("hOUR".toUpperCase()).prev(new DateTime(),22));
+        System.out.println(Granularity.valueOf("hOUR".toUpperCase()).prev(new DateTime(), 22));
 
 
     }

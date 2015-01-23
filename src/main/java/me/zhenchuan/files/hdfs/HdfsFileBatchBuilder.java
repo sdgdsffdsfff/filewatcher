@@ -1,5 +1,7 @@
 package me.zhenchuan.files.hdfs;
 
+import org.apache.commons.lang3.builder.ToStringBuilder;
+
 public class HdfsFileBatchBuilder {
 
     private String baseWorkPath = "/data";
@@ -37,6 +39,18 @@ public class HdfsFileBatchBuilder {
     public HdfsFileBatchBuilder setMaxUploadSize(int maxUploadSize) {
         this.maxUploadSize = maxUploadSize;
         return this;
+    }
+
+    @Override
+    public String toString() {
+        return new ToStringBuilder(this)
+                .append("baseWorkPath", baseWorkPath)
+                .append("tmpDir", tmpDir)
+                .append("filenamePattern", filenamePattern)
+                .append("hdfsPathPattern", hdfsPathPattern)
+                .append("gran", gran)
+                .append("maxUploadSize", maxUploadSize)
+                .toString();
     }
 
     public HdfsFileBatch createHdfsFileBatch() {

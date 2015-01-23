@@ -1,6 +1,10 @@
 package me.zhenchuan.files.hdfs;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Ordering;
 import me.zhenchuan.files.utils.Files;
+import me.zhenchuan.files.utils.Granularity;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
@@ -9,6 +13,7 @@ import org.joda.time.format.DateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.*;
 
@@ -43,14 +48,14 @@ public class HdfsFileBatch {
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
         String remoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
 
-        List<File> files = new ArrayList<File>(FileUtils.listFilesAndDirs(new File(baseWorkPath)   //根据filepattern找到上一小时的日志文件
+        List<File> files = new ArrayList<File>(FileUtils.listFiles(new File(baseWorkPath)   //根据filepattern找到上一小时的日志文件
                 , new RegexFileFilter(pattern)
                 , TrueFileFilter.INSTANCE));
 
         Collections.sort(files,new Comparator<File>() {    //根据文件修改日期排序,
             @Override
             public int compare(File o1, File o2) {
-                return (int) (o1.lastModified() - o2.lastModified());
+                return Long.valueOf(o1.lastModified()).compareTo(o2.lastModified());
             }
         });
 
@@ -82,33 +87,46 @@ public class HdfsFileBatch {
 
     }
 
-    public void upload(String remoteFilePath, List<File> container) {
+    private void upload(String remoteFilePath, List<File> container) {
         if(container == null || container.size() ==0 ) return  ;
+
+        List<String> filePathList = Lists.transform(container, new Function<File, String>() {
+            @Nullable
+            @Override
+            public String apply(@Nullable File file) {
+                return file.getAbsolutePath();
+            }
+        });
+
         File output = Files.concat(
                 outputFile(container.get(0).lastModified() + "_" + container.get(container.size()-1).lastModified()),
                 container
         );
+
         if(output.exists()){
             boolean flag = Files.upload(remoteFilePath,output.getAbsolutePath());
             if(flag){
-                log.info("upload {} to path {} success.", output.getAbsoluteFile(), remoteFilePath);
+                log.info("upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
+                        filePathList);
                 output.delete();
             }else{
-                log.warn("upload {} to path {} failed.", output.getAbsoluteFile(), remoteFilePath);
+                log.warn("upload {} to path {} failed.\n{}", output.getAbsoluteFile(), remoteFilePath,filePathList);
             }
         }else{
-            log.info("failed to concat files {} ",container);
+            log.info("failed to concat files {} \n{}",filePathList);
         }
     }
 
-    public File outputFile(String name){
+    private File outputFile(String name){
         if(name == null)
             name = String.valueOf(System.currentTimeMillis()) ;
         return new File(this.tmpDir , name);
     }
 
     public static void main(String[] args) {
-        new HdfsFileBatchBuilder().createHdfsFileBatch().process();
+        DateTime dateTime = Granularity.HOUR.prev(new DateTime());
+        DateTimeFormat.forPattern("'/user/zhenchuan.liu/tmp/logs/'yyyy/MM/dd/HH").print(dateTime);
+        DateTimeFormat.forPattern("yyyyMMddHH'.*.unbid.log'").print(dateTime);
     }
 
 }

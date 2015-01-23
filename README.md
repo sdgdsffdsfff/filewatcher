@@ -39,11 +39,13 @@ filewatcher
 `properties` 提供给worker的properties文件,这些配置会被写入到System.properties
 
 
+###支持HDFS
+`java -Xmx1g -cp filewatcher-1.0-SNAPSHOT.jar:/data/hadoop_config me.zhenchuan.files.hdfs.App --property=hdfs.properties`
+
 
 ###TODO 
 1. 目前配置太多,把上面opt的参数,都放到一个properties文件中,见 resources/conf.properties.
-2. 添加hdfs支持.
-3. 支持file的rotate方式.
+2. 支持file的rotate方式.
 
 
 
