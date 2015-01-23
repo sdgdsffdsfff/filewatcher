@@ -274,7 +274,7 @@ public class Overlord {
     }
 
     private Collection<File> getFiles() {
-        return  FileUtils.listFilesAndDirs(new File(this.baseWorkPath)
+        return  FileUtils.listFiles(new File(this.baseWorkPath)
                 , new RegexFileFilter(fileNamePattern)
                 , TrueFileFilter.INSTANCE);
     }
