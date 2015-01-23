@@ -29,11 +29,13 @@ public class App {
         properties.load(new FileInputStream(new File(propertyPath.value(options))));
 
         HdfsFileBatchBuilder builder = new HdfsFileBatchBuilder()
+                .setName(properties.getProperty("name"))
                 .setHdfsPathPattern(properties.getProperty("hdfs_pattern"))
                 .setBaseWorkPath(properties.getProperty("work_path"))
                 .setFilenamePattern(properties.getProperty("file_pattern"))
                 .setGran(properties.getProperty("gran"))
                 .setMaxUploadSize(NumberUtils.toLong(properties.getProperty("max_upload_size"),200 * 1024 * 1024))
+                .setSafeInterval(NumberUtils.toInt(properties.getProperty("safe_interval"),10))
                 .setTmpDir(properties.getProperty("tmp_dir","/tmp"));
 
         log.info("config:\n{}" , builder.toString());

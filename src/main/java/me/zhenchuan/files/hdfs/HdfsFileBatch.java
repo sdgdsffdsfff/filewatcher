@@ -2,13 +2,16 @@ package me.zhenchuan.files.hdfs;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Ordering;
+import com.j256.ormlite.dao.Dao;
+import com.j256.ormlite.dao.DaoManager;
+import com.j256.ormlite.jdbc.JdbcConnectionSource;
+import com.j256.ormlite.support.ConnectionSource;
+import com.j256.ormlite.table.TableUtils;
 import me.zhenchuan.files.utils.Files;
 import me.zhenchuan.files.utils.Granularity;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.joda.time.DateTime;
@@ -19,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.*;
 
 /**
@@ -37,17 +41,34 @@ public class HdfsFileBatch {
     private String hdfsPathPattern ;
 
     private String name = "xxx-unbid";
-    private String notifyURL = "http://xxx.com/path" ;
+    private int safeInterval = 4 ;
 
-    public HdfsFileBatch(String baseWorkPath,String tmpDir,String filenamePattern,String hdfsPathPattern,
-                         String gran ,long maxUploadSize){
+    private final static String DATABASE_URL = "jdbc:h2:file:~/db/h2meta.db";
+    private Dao<HdfsMeta, Integer> hdfsDao;
+
+
+    public HdfsFileBatch(String name,String baseWorkPath,String tmpDir,String filenamePattern,String hdfsPathPattern,
+                         String gran ,long maxUploadSize,int safeInterval){
+        this.name = name ;
         this.baseWorkPath = baseWorkPath ;
         this.tmpDir = tmpDir;
         this.filenamePattern = filenamePattern ;
         this.granularity = Granularity.valueOf(gran.toUpperCase());
         this.maxUploadSize = maxUploadSize ;
         this.hdfsPathPattern = hdfsPathPattern;
+        this.safeInterval = safeInterval;
         assertDir();
+        initDao();
+    }
+
+    public void initDao(){
+        try {
+            ConnectionSource connectionSource = new JdbcConnectionSource(DATABASE_URL);
+            hdfsDao = DaoManager.createDao(connectionSource, HdfsMeta.class);
+            TableUtils.createTable(connectionSource, HdfsMeta.class);
+        }catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public void assertDir(){
@@ -60,15 +81,15 @@ public class HdfsFileBatch {
     }
 
     public void process(){
-        for(int i = 0 ; i < 4 ; i++){
-            DateTime time = new DateTime().minus(granularity.getUnits(1));
+        for(int i = 0 ; i < safeInterval ; i++){
+            DateTime time = new DateTime().minus(granularity.getUnits(i));
             process(time);
         }
     }
 
     public void process(DateTime dateTime){
         long s = System.currentTimeMillis() ;
-        DateTime lastGran = granularity.prev(dateTime); //上一个时间
+        DateTime lastGran = granularity.prev(dateTime); //上一个时间,已经被truncate
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
         String remoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
 
@@ -78,7 +99,9 @@ public class HdfsFileBatch {
         List<String> deltas = new ArrayList<>();  //记录当前已同步的文件,便于进行对比,是否有新增文件.
 
         String yyyyMMddHHmmss = DateTimeFormat.forPattern("yyyyMMddHHmmss").print(lastGran);
-        String metaDir = (tmpDir.endsWith("/") ? tmpDir : tmpDir + "/") + yyyyMMddHHmmss;
+        String metaDir = (tmpDir.endsWith("/") ? tmpDir : tmpDir + "/") + name + "/" + yyyyMMddHHmmss;
+        if(!new File(metaDir).exists()) new File(metaDir).mkdirs() ;
+
         List<String> processed = restore(metaDir);
 
         long batchSize = 0 ;
@@ -103,11 +126,19 @@ public class HdfsFileBatch {
 
         deltas.addAll(upload(remoteFilePath, container));
 
+        long timeInMills = System.currentTimeMillis() - s;
         log.info("[{}] [{}] upload using [{}] ms. file num [{}] .file size [{}] ",
                 name, yyyyMMddHHmmss ,
-                (System.currentTimeMillis() -s ), deltas.size() ,totalSize );
+                timeInMills, deltas.size() ,totalSize );
         store(metaDir,deltas);
-        //TODO notify url to report status
+
+        try {
+            HdfsMeta hdfsMeta = new HdfsMeta(name,granularity.name(), timeInMills,
+                    deltas.size(),totalSize,StringUtils.join(deltas,";"));
+            hdfsDao.create(hdfsMeta);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
 
     }
 

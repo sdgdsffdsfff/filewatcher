@@ -44,6 +44,8 @@ filewatcher
 
 ####hdfs.properties
 ```
+##应用名称
+name=unibd
 ##hdfs的文件路径,支持时间表达式嵌入      
 hdfs_pattern='/user/zhenchuan.liu/tmp/logs/'yyyy/MM/dd/HH/      
 ##要处理的文件所在的目录       
@@ -55,7 +57,9 @@ gran=hour
 ##上传到hdfs的文件大小,超过这个可能会被截断          
 max_upload_size=200000000             
 ##生成临时文件的目录          
-tmp_dir=/tmp/             
+tmp_dir=/tmp/ 
+##安全检查间隔,同gran单位
+safe_interval=10
 ```
 
 
