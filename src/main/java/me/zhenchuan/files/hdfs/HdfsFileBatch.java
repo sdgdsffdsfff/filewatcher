@@ -8,6 +8,7 @@ import me.zhenchuan.files.utils.Granularity;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.slf4j.Logger;
@@ -40,6 +41,16 @@ public class HdfsFileBatch {
         this.granularity = Granularity.valueOf(gran.toUpperCase());
         this.maxUploadSize = maxUploadSize ;
         this.hdfsPathPattern = hdfsPathPattern;
+        assertDir();
+    }
+
+    public void assertDir(){
+        if(!new File(this.tmpDir).exists()){
+            new File(this.tmpDir).mkdirs();
+        }
+        if(!new File(this.baseWorkPath).exists()){
+            throw new IllegalArgumentException("work dir ["+this.baseWorkPath+"] not exist!");
+        }
     }
 
     public void process(){
@@ -98,13 +109,17 @@ public class HdfsFileBatch {
             }
         });
 
+        File firstFile = container.get(0),lastFile = container.get(container.size() -1);
+
         File output = Files.concat(
-                outputFile(container.get(0).lastModified() + "_" + container.get(container.size()-1).lastModified()),
+                outputFile(firstFile.getName() + "_" +  lastFile.getName()),
                 container
         );
 
         if(output.exists()){
-            boolean flag = Files.upload(remoteFilePath,output.getAbsolutePath());
+            boolean flag = Files.upload(
+                    (remoteFilePath.endsWith("/")?remoteFilePath  : remoteFilePath + "/" ) + output.getName() ,
+                    output.getAbsolutePath());
             if(flag){
                 log.info("upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
                         filePathList);

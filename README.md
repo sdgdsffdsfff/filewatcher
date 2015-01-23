@@ -42,6 +42,22 @@ filewatcher
 ###支持HDFS
 `java -Xmx1g -cp filewatcher-1.0-SNAPSHOT.jar:/data/hadoop_config me.zhenchuan.files.hdfs.App --property=hdfs.properties`
 
+####hdfs.properties
+```
+##hdfs的文件路径,支持时间表达式嵌入      
+hdfs_pattern='/user/zhenchuan.liu/tmp/logs/'yyyy/MM/dd/HH/      
+##要处理的文件所在的目录       
+work_path=/data/aws           
+##要处理的文件格式                  
+file_pattern=yyyyMMddHH'.*.unbid.log'            
+##目前有 HOUR | DAY 两个可选,表示要处理的文件的间隔             
+gran=hour                           
+##上传到hdfs的文件大小,超过这个可能会被截断          
+max_upload_size=200000000             
+##生成临时文件的目录          
+tmp_dir=/tmp/             
+```
+
 
 ###TODO 
 1. 目前配置太多,把上面opt的参数,都放到一个properties文件中,见 resources/conf.properties.
