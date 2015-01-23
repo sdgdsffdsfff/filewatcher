@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -34,6 +35,9 @@ public class HdfsFileBatch {
     private String filenamePattern ;
     private long maxUploadSize;
     private String hdfsPathPattern ;
+
+    private String name = "xxx-unbid";
+    private String notifyURL = "http://xxx.com/path" ;
 
     public HdfsFileBatch(String baseWorkPath,String tmpDir,String filenamePattern,String hdfsPathPattern,
                          String gran ,long maxUploadSize){
@@ -56,55 +60,84 @@ public class HdfsFileBatch {
     }
 
     public void process(){
+        for(int i = 0 ; i < 4 ; i++){
+            DateTime time = new DateTime().minus(granularity.getUnits(1));
+            process(time);
+        }
+    }
+
+    public void process(DateTime dateTime){
         long s = System.currentTimeMillis() ;
-        DateTime lastGran = granularity.prev(new DateTime()); //上一个时间
+        DateTime lastGran = granularity.prev(dateTime); //上一个时间
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
         String remoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
 
-        List<File> files = new ArrayList<File>(FileUtils.listFiles(new File(baseWorkPath)   //根据filepattern找到上一小时的日志文件
-                , new RegexFileFilter(pattern)
-                , TrueFileFilter.INSTANCE));
-
-        Collections.sort(files,new Comparator<File>() {    //根据文件修改日期排序,
-            @Override
-            public int compare(File o1, File o2) {
-                int ret = Long.valueOf(o1.lastModified()).compareTo(o2.lastModified());
-                if(ret == 0 ){
-                    ret = o1.getName().compareTo(o2.getName());
-                }
-                return ret;
-            }
-        });
+        List<File> files = findFiles(pattern);
 
         List<File> container = new ArrayList<>();
-        List<String> filePaths = new ArrayList<>();  //记录当前已同步的文件,便于进行对比,是否有新增文件.
+        List<String> deltas = new ArrayList<>();  //记录当前已同步的文件,便于进行对比,是否有新增文件.
+
+        String yyyyMMddHHmmss = DateTimeFormat.forPattern("yyyyMMddHHmmss").print(lastGran);
+        String metaDir = (tmpDir.endsWith("/") ? tmpDir : tmpDir + "/") + yyyyMMddHHmmss;
+        List<String> processed = restore(metaDir);
 
         long batchSize = 0 ;
         long totalSize = 0 ;
         for(File file : files){
+            //判断是否已经处理过.
+            if(processed.contains(file.getAbsolutePath())){
+                continue;
+            }
+
             container.add(file);
-            filePaths.add(file.getAbsolutePath());
 
             batchSize += file.length();
             totalSize += file.length();
 
             if(batchSize >= this.maxUploadSize) {   //大小进行切分(200M)
-                upload(remoteFilePath, container);  //上传到hdfs
+                deltas.addAll(upload(remoteFilePath, container));  //上传到hdfs
                 batchSize = 0 ;
                 container.clear();
             }
         }
 
-        upload(remoteFilePath,container);
+        deltas.addAll(upload(remoteFilePath, container));
 
-        //TODO 监测上上N小时的文件是否发生变化,如果有变化,则同步增量数据并酌情通知监控url.
-
-        log.info("upload using {}ms. file num {} .file size {} ",(System.currentTimeMillis() -s ),filePaths.size() ,totalSize );
+        log.info("[{}] [{}] upload using [{}] ms. file num [{}] .file size [{}] ",
+                name, yyyyMMddHHmmss ,
+                (System.currentTimeMillis() -s ), deltas.size() ,totalSize );
+        store(metaDir,deltas);
+        //TODO notify url to report status
 
     }
 
-    private void upload(String remoteFilePath, List<File> container) {
-        if(container == null || container.size() ==0 ) return  ;
+    private List<File> findFiles(String pattern) {
+        List<File> files = new ArrayList<File>(FileUtils.listFiles(new File(baseWorkPath)   //根据filepattern找到上一小时的日志文件
+                , new RegexFileFilter(pattern)
+                , TrueFileFilter.INSTANCE));
+
+        Collections.sort(files, new Comparator<File>() {    //根据文件修改日期排序,
+            @Override
+            public int compare(File o1, File o2) {
+                int ret = Long.valueOf(o1.lastModified()).compareTo(o2.lastModified());
+                if (ret == 0) {
+                    ret = o1.getName().compareTo(o2.getName());
+                }
+                return ret;
+            }
+        });
+        return files;
+    }
+
+    /****
+     * 上传本地文件到hdfs.上传前先进行合并.
+     * 如果上传成功,则返回任务列表 ; 上传失败,返回空集合
+     * @param remoteFilePath
+     * @param container
+     * @return
+     */
+    private List<String> upload(String remoteFilePath, List<File> container) {
+        if(container == null || container.size() ==0 ) return new ArrayList<>() ;
 
         List<String> filePathList = Lists.transform(container, new Function<File, String>() {
             @Nullable
@@ -121,21 +154,24 @@ public class HdfsFileBatch {
                 container
         );
 
-        if(output.exists()){
+        if(output.exists()){   //合并成功
             boolean flag = Files.upload(
                     (remoteFilePath.endsWith("/")?remoteFilePath  : remoteFilePath + "/" ) + output.getName() ,
                     output.getAbsolutePath());
-            if(flag){
-                log.info("======================upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
-                        StringUtils.join(filePathList,"\n"));
+            if(flag){   //上传成功
                 output.delete();
-            }else{
+                log.info("======================upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
+                        StringUtils.join(filePathList, "\n"));
+                return filePathList;
+            }else{     //上传失败
                 log.warn("======================upload {} to path {} failed.\n{}", output.getAbsoluteFile(), remoteFilePath,
                         StringUtils.join(filePathList,"\n"));
+                return new ArrayList<>();
             }
-        }else{
+        }else{    //合并失败
             log.info("======================failed to concat files {} \n{}",
                     StringUtils.join(filePathList,"\n"));
+            return new ArrayList<>();
         }
     }
 
@@ -145,10 +181,48 @@ public class HdfsFileBatch {
         return new File(this.tmpDir , name);
     }
 
+
+    /****
+     * 存储增量的更新文件
+     * @param metaDir
+     * @param delta
+     */
+    private void store(String metaDir,List<String> delta){
+        try {
+            if(delta==null || delta.size() == 0) return ;
+            FileUtils.writeLines(new File(metaDir,DateFormatUtils.format(new Date(),"yyyyMMddHHmmss")),delta);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /****
+     * 从元数据目录中恢复已处理的文件.
+     * @param metaDir
+     * @return
+     */
+    private List<String> restore(String metaDir){
+        List<String> processed = new ArrayList<>();
+        try {
+            File[] fileList = new File(metaDir).listFiles();
+            for(File file : fileList){
+                processed.addAll(FileUtils.readLines(file));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return processed;
+    }
+
     public static void main(String[] args) {
         DateTime dateTime = Granularity.HOUR.prev(new DateTime());
         DateTimeFormat.forPattern("'/user/zhenchuan.liu/tmp/logs/'yyyy/MM/dd/HH").print(dateTime);
         DateTimeFormat.forPattern("yyyyMMddHH'.*.unbid.log'").print(dateTime);
+
+        for(int i = 0 ; i < 4 ; i++){
+            DateTime time = new DateTime().minus(Granularity.HOUR.getUnits(i));
+            System.out.println(time);
+        }
     }
 
 }
