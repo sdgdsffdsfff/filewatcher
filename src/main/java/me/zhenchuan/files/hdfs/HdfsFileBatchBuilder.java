@@ -9,7 +9,7 @@ public class HdfsFileBatchBuilder {
     private String filenamePattern = "yyyyMMddHH'.*.unbid.log'";
     private String hdfsPathPattern = "/user/zhenchuan.liu/logs/yyyy/MM/dd/hh";
     private String gran = "HOUR";
-    private int maxUploadSize = 200 * 1024 * 1024;
+    private long maxUploadSize = 200 * 1024 * 1024;
 
     public HdfsFileBatchBuilder setBaseWorkPath(String baseWorkPath) {
         this.baseWorkPath = baseWorkPath;
@@ -36,7 +36,7 @@ public class HdfsFileBatchBuilder {
         return this;
     }
 
-    public HdfsFileBatchBuilder setMaxUploadSize(int maxUploadSize) {
+    public HdfsFileBatchBuilder setMaxUploadSize(long maxUploadSize) {
         this.maxUploadSize = maxUploadSize;
         return this;
     }

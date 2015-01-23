@@ -8,6 +8,8 @@ import me.zhenchuan.files.utils.Granularity;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
@@ -30,11 +32,11 @@ public class HdfsFileBatch {
     private String baseWorkPath ;
     private String tmpDir ;
     private String filenamePattern ;
-    private int maxUploadSize;
+    private long maxUploadSize;
     private String hdfsPathPattern ;
 
     public HdfsFileBatch(String baseWorkPath,String tmpDir,String filenamePattern,String hdfsPathPattern,
-                         String gran ,int maxUploadSize){
+                         String gran ,long maxUploadSize){
         this.baseWorkPath = baseWorkPath ;
         this.tmpDir = tmpDir;
         this.filenamePattern = filenamePattern ;
@@ -66,19 +68,24 @@ public class HdfsFileBatch {
         Collections.sort(files,new Comparator<File>() {    //根据文件修改日期排序,
             @Override
             public int compare(File o1, File o2) {
-                return Long.valueOf(o1.lastModified()).compareTo(o2.lastModified());
+                int ret = Long.valueOf(o1.lastModified()).compareTo(o2.lastModified());
+                if(ret == 0 ){
+                    ret = o1.getName().compareTo(o2.getName());
+                }
+                return ret;
             }
         });
 
         List<File> container = new ArrayList<>();
         List<String> filePaths = new ArrayList<>();  //记录当前已同步的文件,便于进行对比,是否有新增文件.
 
-        int batchSize = 0 ;
-        int totalSize = 0 ;
+        long batchSize = 0 ;
+        long totalSize = 0 ;
         for(File file : files){
             container.add(file);
-            batchSize += file.length();
+            filePaths.add(file.getAbsolutePath());
 
+            batchSize += file.length();
             totalSize += file.length();
 
             if(batchSize >= this.maxUploadSize) {   //大小进行切分(200M)
@@ -86,8 +93,6 @@ public class HdfsFileBatch {
                 batchSize = 0 ;
                 container.clear();
             }
-
-            filePaths.add(file.getAbsolutePath());
         }
 
         upload(remoteFilePath,container);
@@ -121,14 +126,16 @@ public class HdfsFileBatch {
                     (remoteFilePath.endsWith("/")?remoteFilePath  : remoteFilePath + "/" ) + output.getName() ,
                     output.getAbsolutePath());
             if(flag){
-                log.info("upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
-                        filePathList);
+                log.info("======================upload {} to path {} success.\n{}", output.getAbsoluteFile(), remoteFilePath,
+                        StringUtils.join(filePathList,"\n"));
                 output.delete();
             }else{
-                log.warn("upload {} to path {} failed.\n{}", output.getAbsoluteFile(), remoteFilePath,filePathList);
+                log.warn("======================upload {} to path {} failed.\n{}", output.getAbsoluteFile(), remoteFilePath,
+                        StringUtils.join(filePathList,"\n"));
             }
         }else{
-            log.info("failed to concat files {} \n{}",filePathList);
+            log.info("======================failed to concat files {} \n{}",
+                    StringUtils.join(filePathList,"\n"));
         }
     }
 
