@@ -40,10 +40,11 @@ public class HdfsFileBatch {
     private long maxUploadSize;
     private String hdfsPathPattern ;
 
-    private String name = "xxx-unbid";
+    private String name = "xxx";
     private int safeInterval = 4 ;
 
-    private final static String DATABASE_URL = "jdbc:h2:file:~/db/h2meta.db";
+    private volatile boolean running = true;
+
     private Dao<HdfsMeta, Integer> hdfsDao;
 
 
@@ -58,17 +59,10 @@ public class HdfsFileBatch {
         this.hdfsPathPattern = hdfsPathPattern;
         this.safeInterval = safeInterval;
         assertDir();
-        initDao();
     }
 
-    public void initDao(){
-        try {
-            ConnectionSource connectionSource = new JdbcConnectionSource(DATABASE_URL);
-            hdfsDao = DaoManager.createDao(connectionSource, HdfsMeta.class);
-            TableUtils.createTable(connectionSource, HdfsMeta.class);
-        }catch (SQLException e) {
-            e.printStackTrace();
-        }
+    public void setHdfsDao(Dao<HdfsMeta, Integer> hdfsDao) {
+        this.hdfsDao = hdfsDao;
     }
 
     public void assertDir(){
@@ -81,14 +75,23 @@ public class HdfsFileBatch {
     }
 
     public void process(){
+        DateTime dateTime = new DateTime();
         for(int i = 0 ; i < safeInterval ; i++){
-            DateTime time = new DateTime().minus(granularity.getUnits(i));
+            if(!running){
+                log.info("the system may be has set to stop ...");
+                break;
+            }
+            DateTime time = dateTime.minus(granularity.getUnits(i));
             process(time);
         }
     }
 
+    public void stop(){
+        running = false;
+    }
+
     public void process(DateTime dateTime){
-        long s = System.currentTimeMillis() ;
+        long startTime = System.currentTimeMillis() ;
         DateTime lastGran = granularity.prev(dateTime); //上一个时间,已经被truncate
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
         String remoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
@@ -107,6 +110,10 @@ public class HdfsFileBatch {
         long batchSize = 0 ;
         long totalSize = 0 ;
         for(File file : files){
+            if(!running){
+                log.info("the system may be has set to stop ...");
+                break;
+            }
             //判断是否已经处理过.
             if(processed.contains(file.getAbsolutePath())){
                 continue;
@@ -126,17 +133,18 @@ public class HdfsFileBatch {
 
         deltas.addAll(upload(remoteFilePath, container));
 
-        long timeInMills = System.currentTimeMillis() - s;
+        long endTime = System.currentTimeMillis();
+        long timeInMills = endTime - startTime;
         log.info("[{}] [{}] upload using [{}] ms. file num [{}] .file size [{}] ",
                 name, yyyyMMddHHmmss ,
                 timeInMills, deltas.size() ,totalSize );
-        store(metaDir,deltas);
+        String checkPath = store(metaDir,deltas);
 
         try {
-            HdfsMeta hdfsMeta = new HdfsMeta(name,granularity.name(), timeInMills,
-                    deltas.size(),totalSize,StringUtils.join(deltas,";"));
+            HdfsMeta hdfsMeta = new HdfsMeta(name,yyyyMMddHHmmss,startTime, endTime,
+                    deltas.size(),totalSize,checkPath);
             hdfsDao.create(hdfsMeta);
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
@@ -218,13 +226,15 @@ public class HdfsFileBatch {
      * @param metaDir
      * @param delta
      */
-    private void store(String metaDir,List<String> delta){
+    private String store(String metaDir,List<String> delta){
+        File metaPath = new File(metaDir, DateFormatUtils.format(new Date(), "yyyyMMddHHmmss"));
         try {
-            if(delta==null || delta.size() == 0) return ;
-            FileUtils.writeLines(new File(metaDir,DateFormatUtils.format(new Date(),"yyyyMMddHHmmss")),delta);
+            if(delta==null || delta.size() == 0) return metaPath.getAbsolutePath();
+            FileUtils.writeLines(metaPath,delta);
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return metaPath.getAbsolutePath();
     }
 
     /****

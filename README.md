@@ -62,6 +62,9 @@ tmp_dir=/tmp/
 safe_interval=10
 ```
 
+####监控hdfs的文件上传信息
+`http://192.168.144.200:3456/history?app=aws-unbid`
+
 
 ###TODO 
 1. 目前配置太多,把上面opt的参数,都放到一个properties文件中,见 resources/conf.properties.

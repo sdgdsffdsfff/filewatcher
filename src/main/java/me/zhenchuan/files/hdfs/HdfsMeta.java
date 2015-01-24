@@ -19,7 +19,10 @@ public class HdfsMeta {
     private String gran;
 
     @DatabaseField
-    private long timeInMills;
+    private long startTime ;
+
+    @DatabaseField
+    private long endTime;
 
     @DatabaseField
     private int fileNum;
@@ -27,7 +30,7 @@ public class HdfsMeta {
     @DatabaseField
     private long fileSize;
 
-    @DatabaseField(width = 1024 * 100)
+    @DatabaseField(width = 1024)
     private String info ;
 
 
@@ -35,10 +38,11 @@ public class HdfsMeta {
 
     }
 
-    public HdfsMeta(String app, String gran, long timeInMills, int fileNum, long fileSize, String info) {
+    public HdfsMeta(String app, String gran, long startTime,long endTime, int fileNum, long fileSize, String info) {
         this.app = app;
         this.gran = gran;
-        this.timeInMills = timeInMills;
+        this.startTime =startTime;
+        this.endTime = endTime;
         this.fileNum = fileNum;
         this.fileSize = fileSize;
         this.info = info;
@@ -68,12 +72,12 @@ public class HdfsMeta {
         this.gran = gran;
     }
 
-    public long getTimeInMills() {
-        return timeInMills;
+    public long getEndTime() {
+        return endTime;
     }
 
-    public void setTimeInMills(long timeInMills) {
-        this.timeInMills = timeInMills;
+    public void setEndTime(long endTime) {
+        this.endTime = endTime;
     }
 
     public int getFileNum() {
@@ -98,5 +102,13 @@ public class HdfsMeta {
 
     public void setInfo(String info) {
         this.info = info;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
     }
 }
