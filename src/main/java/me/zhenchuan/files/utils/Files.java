@@ -40,13 +40,7 @@ public class Files {
     public static boolean upload(String remoteFilePath,String localFilePath){
         boolean success = false ;
         try {
-            Configuration hadoopConf = new Configuration();
-            hadoopConf.set("fs.hdfs.impl",
-                    org.apache.hadoop.hdfs.DistributedFileSystem.class.getName()
-            );
-            hadoopConf.set("fs.file.impl",
-                    org.apache.hadoop.fs.LocalFileSystem.class.getName()
-            );
+            Configuration hadoopConf = createHadoopConfiguration();
             Path outFile = new Path(remoteFilePath);
             FileSystem fs = outFile.getFileSystem(hadoopConf);
             fs.mkdirs(outFile.getParent());
@@ -56,6 +50,30 @@ public class Files {
             e.printStackTrace();
         }
         return success;
+    }
+
+    public static boolean move(String sourcePath,String target){
+        boolean success = false;
+        try {
+            Configuration hadoopConf = createHadoopConfiguration();
+            FileSystem fileSystem = FileSystem.get(hadoopConf);
+            FileUtil.copy(fileSystem,new Path(sourcePath),fileSystem,new Path(target),true,hadoopConf);
+            success = true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return success;
+    }
+
+    private static Configuration createHadoopConfiguration() {
+        Configuration hadoopConf = new Configuration();
+        hadoopConf.set("fs.hdfs.impl",
+                org.apache.hadoop.hdfs.DistributedFileSystem.class.getName()
+        );
+        hadoopConf.set("fs.file.impl",
+                LocalFileSystem.class.getName()
+        );
+        return hadoopConf;
     }
 
 }

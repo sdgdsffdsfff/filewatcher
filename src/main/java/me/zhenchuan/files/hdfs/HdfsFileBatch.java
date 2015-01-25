@@ -94,7 +94,11 @@ public class HdfsFileBatch {
         long startTime = System.currentTimeMillis() ;
         DateTime lastGran = granularity.prev(dateTime); //上一个时间,已经被truncate
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
-        String remoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
+
+        //这里使用临时目录,在都上传成功后再将这个目录的文件移除到finalRemoteFilePath中.
+        String finalRemoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
+        String remoteFilePath = "/tmp/" + name + "/" + DateTimeFormat.forPattern("yyyyMMddHHmmss").print(new DateTime());
+
 
         List<File> files = findFiles(pattern);
 
@@ -132,6 +136,7 @@ public class HdfsFileBatch {
         }
 
         deltas.addAll(upload(remoteFilePath, container));
+        Files.move(remoteFilePath,finalRemoteFilePath);
 
         long endTime = System.currentTimeMillis();
         long timeInMills = endTime - startTime;
@@ -189,7 +194,7 @@ public class HdfsFileBatch {
         File firstFile = container.get(0),lastFile = container.get(container.size() -1);
 
         File output = Files.concat(
-                outputFile(firstFile.getName() + "_" +  lastFile.getName()),
+                outputFile(this.name + "_" + firstFile.getName() + "_" +  lastFile.getName()),
                 container
         );
 
