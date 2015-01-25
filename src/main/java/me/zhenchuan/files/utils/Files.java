@@ -55,9 +55,16 @@ public class Files {
     public static boolean move(String sourcePath,String target){
         boolean success = false;
         try {
+
             Configuration hadoopConf = createHadoopConfiguration();
             FileSystem fileSystem = FileSystem.get(hadoopConf);
-            FileUtil.copy(fileSystem,new Path(sourcePath),fileSystem,new Path(target),true,hadoopConf);
+
+            Path src = new Path(sourcePath);
+            Path dst = new Path(target);
+            fileSystem.mkdirs(src);
+            fileSystem.mkdirs(dst);
+
+            FileUtil.copy(fileSystem, src,fileSystem, dst,true,hadoopConf);
             success = true;
         } catch (IOException e) {
             e.printStackTrace();

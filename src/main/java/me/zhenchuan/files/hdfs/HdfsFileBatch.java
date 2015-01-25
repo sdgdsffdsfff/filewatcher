@@ -97,7 +97,7 @@ public class HdfsFileBatch {
 
         //这里使用临时目录,在都上传成功后再将这个目录的文件移除到finalRemoteFilePath中.
         String finalRemoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
-        String remoteFilePath = "/tmp/" + name + "/" + DateTimeFormat.forPattern("yyyyMMddHHmmss").print(new DateTime());
+        String tmpRemoteFilePath = "/tmp/" + name + "/" + DateTimeFormat.forPattern("yyyyMMddHHmmss").print(new DateTime());
 
 
         List<File> files = findFiles(pattern);
@@ -129,14 +129,19 @@ public class HdfsFileBatch {
             totalSize += file.length();
 
             if(batchSize >= this.maxUploadSize) {   //大小进行切分(200M)
-                deltas.addAll(upload(remoteFilePath, container));  //上传到hdfs
+                deltas.addAll(upload(tmpRemoteFilePath, container));  //上传到hdfs
                 batchSize = 0 ;
                 container.clear();
             }
         }
 
-        deltas.addAll(upload(remoteFilePath, container));
-        Files.move(remoteFilePath,finalRemoteFilePath);
+        deltas.addAll(upload(tmpRemoteFilePath, container));
+
+        log.info("begin to move files from tmp[{}] to target[{}]",tmpRemoteFilePath,finalRemoteFilePath);
+        boolean flag = Files.move(tmpRemoteFilePath,finalRemoteFilePath);
+        if(!flag){
+            deltas.clear();
+        }
 
         long endTime = System.currentTimeMillis();
         long timeInMills = endTime - startTime;
