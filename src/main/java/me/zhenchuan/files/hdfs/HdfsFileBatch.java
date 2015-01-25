@@ -3,10 +3,7 @@ package me.zhenchuan.files.hdfs;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.j256.ormlite.dao.Dao;
-import com.j256.ormlite.dao.DaoManager;
-import com.j256.ormlite.jdbc.JdbcConnectionSource;
-import com.j256.ormlite.support.ConnectionSource;
-import com.j256.ormlite.table.TableUtils;
+import com.j256.ormlite.stmt.DeleteBuilder;
 import me.zhenchuan.files.utils.Files;
 import me.zhenchuan.files.utils.Granularity;
 import org.apache.commons.io.FileUtils;
@@ -95,24 +92,32 @@ public class HdfsFileBatch {
         DateTime lastGran = granularity.prev(dateTime); //上一个时间,已经被truncate
         String pattern = DateTimeFormat.forPattern(filenamePattern).print(lastGran);
 
-        //这里使用临时目录,在都上传成功后再将这个目录的文件移除到finalRemoteFilePath中.
         String finalRemoteFilePath = DateTimeFormat.forPattern(hdfsPathPattern).print(lastGran);
-        String tmpRemoteFilePath = "/tmp/" + name + "/" + DateTimeFormat.forPattern("yyyyMMddHHmmss").print(new DateTime());
-
 
         List<File> files = findFiles(pattern);
 
-        List<File> container = new ArrayList<>();
-        List<String> deltas = new ArrayList<>();  //记录当前已同步的文件,便于进行对比,是否有新增文件.
+        List<File> batchContainer = new ArrayList<>();
 
         String yyyyMMddHHmmss = DateTimeFormat.forPattern("yyyyMMddHHmmss").print(lastGran);
         String metaDir = (tmpDir.endsWith("/") ? tmpDir : tmpDir + "/") + name + "/" + yyyyMMddHHmmss;
-        if(!new File(metaDir).exists()) new File(metaDir).mkdirs() ;
+        if(!new File(metaDir).exists()) {
+            try {
+                //重置状态
+                DeleteBuilder<HdfsMeta, Integer> deleteBuilder = hdfsDao.deleteBuilder();
+                deleteBuilder.where().eq("app",name).and().eq("gran",yyyyMMddHHmmss);
+                deleteBuilder.delete();
+                Files.delete(finalRemoteFilePath);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            new File(metaDir).mkdirs() ;
+        }
 
         List<String> processed = restore(metaDir);
 
         long batchSize = 0 ;
         long totalSize = 0 ;
+        int fileNum = 0;
         for(File file : files){
             if(!running){
                 log.info("the system may be has set to stop ...");
@@ -123,41 +128,43 @@ public class HdfsFileBatch {
                 continue;
             }
 
-            container.add(file);
+            batchContainer.add(file);
 
             batchSize += file.length();
             totalSize += file.length();
+            fileNum ++ ;
 
             if(batchSize >= this.maxUploadSize) {   //大小进行切分(200M)
-                deltas.addAll(upload(tmpRemoteFilePath, container));  //上传到hdfs
+                uploadAndSaveMeta(finalRemoteFilePath, batchContainer, metaDir);
                 batchSize = 0 ;
-                container.clear();
+                batchContainer.clear();
             }
         }
 
-        deltas.addAll(upload(tmpRemoteFilePath, container));
+        uploadAndSaveMeta(finalRemoteFilePath, batchContainer, metaDir);
 
-        log.info("begin to move files from tmp[{}] to target[{}]",tmpRemoteFilePath,finalRemoteFilePath);
-        boolean flag = Files.move(tmpRemoteFilePath,finalRemoteFilePath);
-        if(!flag){
-            deltas.clear();
-        }
 
         long endTime = System.currentTimeMillis();
         long timeInMills = endTime - startTime;
         log.info("[{}] [{}] upload using [{}] ms. file num [{}] .file size [{}] ",
                 name, yyyyMMddHHmmss ,
-                timeInMills, deltas.size() ,totalSize );
-        String checkPath = store(metaDir,deltas);
+                timeInMills, fileNum ,totalSize );
+        //先保存,表示这些文件已经上传到hdfs的临时目录
+
 
         try {
             HdfsMeta hdfsMeta = new HdfsMeta(name,yyyyMMddHHmmss,startTime, endTime,
-                    deltas.size(),totalSize,checkPath);
+                    fileNum,totalSize,"");
             hdfsDao.create(hdfsMeta);
         } catch (Exception e) {
             e.printStackTrace();
         }
 
+    }
+
+    private void uploadAndSaveMeta(String finalRemoteFilePath, List<File> container,String metaDir) {
+        List<String> upload = upload(finalRemoteFilePath, container);
+        store(metaDir, upload);
     }
 
     private List<File> findFiles(String pattern) {
@@ -185,14 +192,14 @@ public class HdfsFileBatch {
      * @param container
      * @return
      */
-    private List<String> upload(String remoteFilePath, List<File> container) {
+    private List<String> upload(final String remoteFilePath, List<File> container) {
         if(container == null || container.size() ==0 ) return new ArrayList<>() ;
 
         List<String> filePathList = Lists.transform(container, new Function<File, String>() {
             @Nullable
             @Override
             public String apply(@Nullable File file) {
-                return file.getAbsolutePath();
+                return file.getAbsolutePath() + ";" + remoteFilePath;
             }
         });
 
@@ -237,9 +244,9 @@ public class HdfsFileBatch {
      * @param delta
      */
     private String store(String metaDir,List<String> delta){
-        File metaPath = new File(metaDir, DateFormatUtils.format(new Date(), "yyyyMMddHHmmss"));
+        File metaPath = new File(metaDir, DateFormatUtils.format(new Date(), "yyyyMMddHHmmssSSS"));
         try {
-            if(delta==null || delta.size() == 0) return metaPath.getAbsolutePath();
+            if(delta==null ) delta = new ArrayList<>();
             FileUtils.writeLines(metaPath,delta);
         } catch (IOException e) {
             e.printStackTrace();

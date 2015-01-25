@@ -52,10 +52,34 @@ public class Files {
         return success;
     }
 
+    public static boolean exist(String path){
+        boolean success = false;
+        try {
+            Configuration hadoopConf = createHadoopConfiguration();
+            FileSystem fileSystem = FileSystem.get(hadoopConf);
+            return fileSystem.exists(new Path(path));
+        }catch (Exception e){
+
+        }
+        return success;
+    }
+
+    public static boolean delete(String remote){
+        boolean success = false;
+        try {
+            Configuration hadoopConf = createHadoopConfiguration();
+            FileSystem fileSystem = FileSystem.get(hadoopConf);
+            fileSystem.delete(new Path(remote),true);
+            success = true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return success;
+    }
+
     public static boolean move(String sourcePath,String target){
         boolean success = false;
         try {
-
             Configuration hadoopConf = createHadoopConfiguration();
             FileSystem fileSystem = FileSystem.get(hadoopConf);
 
@@ -64,7 +88,15 @@ public class Files {
             fileSystem.mkdirs(src);
             fileSystem.mkdirs(dst);
 
-            FileUtil.copy(fileSystem, src,fileSystem, dst,true,hadoopConf);
+            RemoteIterator<LocatedFileStatus> iterator = fileSystem.listFiles(src,false);
+            while(iterator.hasNext()){
+                Path source = iterator.next().getPath();
+                //TODO try fileSystem.rename
+                //这样又是老问题了,依然无法保证这个copy过程中出错,下次同步文件变多的情况.
+                fileSystem.rename(source,new Path(target,source.getName()));
+                //FileUtil.copy(fileSystem, source,fileSystem, dst,true,hadoopConf);
+            }
+
             success = true;
         } catch (IOException e) {
             e.printStackTrace();
